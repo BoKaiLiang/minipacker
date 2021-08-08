@@ -21,6 +21,7 @@ static int FileFilter(const struct dirent* ent);
 
 typedef struct {
     char* name;
+    int x, y;
     int w, h;
     int fmt;
     unsigned char* data;
@@ -73,67 +74,143 @@ int main(int argc, char** argv) {
         }
         free(namelist);
 
-        // stbi_write_png("cute.png", images[0].w, images[0].h, images[0].fmt, images[0].data, 0);
-
         stbrp_context* context = (stbrp_context*)malloc(sizeof(stbrp_context));
         stbrp_node* nodes = (stbrp_node*)malloc(n * sizeof(stbrp_node));
 
         stbrp_init_target(context, 1024, 1024, nodes, n);
         stbrp_rect* rects = (stbrp_rect*)malloc(n * sizeof(stbrp_rect));
 
+        int padding = 2;
+
         for (int i = 0; i < n; i++) {
             rects[i].id = i;
-            rects[i].w = images[i].w;
-            rects[i].h = images[i].h;
+            rects[i].w = images[i].w + 2 * padding;
+            rects[i].h = images[i].h + 2 * padding;
         }
 
         stbrp_pack_rects(context, rects, n);
-
-        for (int i = 0 ; i < n; i++) {
-            printf("rect: %i >> x: %i, y: %i, w: %i, h: %i\n", rects[i].id, rects[i].x, rects[i].y, rects[i].w, rects[i].h);
+        for (int i = 0; i < n; i++) {
+            images[i].x = rects[i].x;
+            images[i].y = rects[i].y;
         }
 
-        unsigned char* atlas_data = (unsigned char*)calloc(1024 * 1024 * 4, sizeof(unsigned char));
-        memset(atlas_data, 0, 1024 * 1024 * 4);
-#if 0
-        for (int i = 0; i < 1; i++) {
+        float rq_area = 0.0f;
+        for (int i = 0; i < n; i++) {
+            rq_area += images[i].w * images[i].h;
+        }
+
+        float measured_sz = sqrtf(rq_area);
+        int image_sz = (int)powf(2.0f, ceilf(log2f(measured_sz)));
+
+        printf("Atlas w and h: %d\n", image_sz);
+
+        unsigned char* atlas_data = (unsigned char*)calloc(image_sz * image_sz * 4, sizeof(unsigned char));
+        memset(atlas_data, 0, image_sz * image_sz * 4);
+        
+        for (int i = 0; i < n; i++) {
+
+            // printf("name: %s. rect: %i >> x: %i, y: %i, w: %i, h: %i\n", images[i].name, rects[i].id, rects[i].x, rects[i].y, rects[i].w, rects[i].h);
 
             if (rects[i].was_packed) {
                 for (int y = 0; y < images[i].h; y++) {
                     for (int x = 0; x < images[i].w; x++) {
-                        atlas_data[(rects[i].y + y) * 1024 + (rects[i].x + x)] = images[i].data[y * images[i].w + x];
+                        
+                        int atlas_idx = 4 * ((y + rects[i].y) * image_sz +  (x + rects[i].x));
+                        int image_idx = 4 * (y * images[i].w + x);
+
+                        atlas_data[atlas_idx] = images[i].data[image_idx];
+                        atlas_data[atlas_idx + 1] = images[i].data[image_idx + 1];
+                        atlas_data[atlas_idx + 2] = images[i].data[image_idx + 2];
+                        atlas_data[atlas_idx + 3] = images[i].data[image_idx + 3];
                     }   
                 }
             }
         }
+        
 #endif
 
-        for (int i = 0; i < (images[0].w * images[0].h); i += 4) {
-            atlas_data[i] = images[0].data[i];
-            atlas_data[i + 1] = images[0].data[i + 1];
-            atlas_data[i + 2] = images[0].data[i + 2];
-            atlas_data[i + 3] = images[0].data[i + 3];
+        // 在 (10, 10)為原點的地方畫出 128 * 128的正方形
+/*
+        for (int y = 0; y < 128; y += 1) {
+            for (int x = 0; x < 128; x += 1) {
+
+                int index = 4 * ((y + 128) * 1024 + (x + 128));
+
+                atlas_data[index] = 127; 
+                atlas_data[index + 1] = 0; 
+                atlas_data[index + 2] = 255; 
+                atlas_data[index + 3] = 255; 
+            }
+        }
+*/
+#if 0      
+        stbi_write_png("cute.png", image_sz, image_sz, 4, atlas_data, image_sz * 4);
+
+        FILE* csv = fopen("cute.txt", "w");
+        if (csv == NULL) {
+            perror("Failed to create file");
+            fclose(csv);
+            return -1;
         }
 
-        stbi_write_png("cute.png", 1024, 1024, 4, atlas_data, 0);
+        fprintf(csv, "name,x,y,width,height\n");
+        for (int i = 0; i < n; i++) {
+            fprintf(csv, "%s,%d,%d,%d,%d\n", images[i].name, images[i].x, images[i].y, images[i].w, images[i].h);
+        }
+
+        /* Read file string in format: https://stackoverflow.com/questions/4689747/how-to-read-specifically-formatted-data-from-a-file/4689881 */
+
+        fclose(csv);
+#endif
 
         free(rects);
         free(nodes);
         free(context);
 
-    }
-#else
+        free(images);
 
-    unsigned char* atals_data = (char*)malloc(1024 * 1024 * sizeof(unsigned char) * 4);
+    }   
 
-    for (int i = 0; i < (512 * 1024); i += 4) {
-            atals_data[i] = 255;
-            atals_data[i + 1] = 0;
-            atals_data[i + 2] = 0;
-            atals_data[i + 3] = 255;
+#if 0   
+        // Serialize file here
+
+        // test reading file
+        FILE* f = fopen("cute.txt", "r");
+        if (f == NULL) {
+            perror("Failed to read file");
+            fclose(f);
+            return -1;
         }
 
-    stbi_write_png("atalas.png", 1024, 1024, 4, atals_data, 1024);
+        int line_count = 0;
+        while (1) {
+            char line[256] = { 0 };
+            int res = fscanf(f, "%s", line);
+            if (res == EOF)
+                break;
+            
+            line_count += 1;
+            printf("line %d: %s\n", line_count, line);
+
+            char* tok;
+
+            char name[256];
+            int x, y, w, h;
+            /*
+            tok = strtok(line, ",");
+            while (tok != NULL) {
+                printf("%s\n", tok);
+                tok = strtok(NULL, ",");
+            }
+            */
+            res = sscanf(line, "%[^,],%d,%d,%d,%d", name, &x, &y, &w, &h);
+            if (res == 5) {
+                printf("image: %s, x: %d, y: %d, width: %d, height: %d\n", name, x, y, w, h);
+            }
+        }
+
+        fclose(f);
+    
 #endif
 
     return 0;
