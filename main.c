@@ -155,7 +155,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        if (0 != stbi_write_png(output_atlas_file_name, image_sz, image_sz, PNG_CHANNELS, atlas_data, image_sz * PNG_CHANNELS)) {
+        if (0 == stbi_write_png(output_atlas_file_name, image_sz, image_sz, PNG_CHANNELS, atlas_data, image_sz * PNG_CHANNELS)) {
             printf("[ERROR] Failed to create the texture atlas.\n");
             return -1;
         } else {
@@ -171,10 +171,12 @@ int main(int argc, char** argv) {
             return -1;
         }
 
-        fprintf(atlas_csv_file, "# Format: name,x,y,width,height\n");
+        fprintf(atlas_csv_file, "# Format: name,x,y,width,height\n\n");
         for (int i = 0; i < elements_count; i++) {
             fprintf(atlas_csv_file, "%s,%d,%d,%d,%d\n", images[i].name, images[i].x, images[i].y, images[i].w, images[i].h);
         }
+        fprintf(atlas_csv_file, "\n# Total count: %d", elements_count);
+
         printf("[INFO] Success to create csv file => %s\n", output_csv_file_name);
 
 
