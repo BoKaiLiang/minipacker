@@ -1,9 +1,5 @@
 #define _CRT_SECURE_NO_WARNINGS
 
-// TODO
-// - create dir for ouput
-// - 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +18,9 @@
 #define PADDING 4           // padding between two sprite
 #define PNG_CHANNELS 4      // png channels
 
+static const char* PNG_EXTENSION = ".png";
+static const char* CSV_EXTENSION = ".txt";
+
 static int IsFileExtension(const char* filename, const char* ext);
 static const char* GetFileExt(const char* filename);
 static int FileFilter(const struct dirent* ent);
@@ -36,32 +35,45 @@ typedef struct {
 
 int main(int argc, char** argv) {
 
-    if (argc < 4) {
-        printf("[ERROR] No input.");
+    if (argc < 3) {
+        printf("[ERROR] Not enough input.\n");
+        printf(" \t-- First argument set the dir where you put your images for atlas.\n");
+        printf(" \t-- Second argument set the name for the file. (without extension)\n");
         return -1;
-    }
-
-    for (int i = 0; i < argc; i++) {
-        printf("%s\n", argv[i]);
     }
 
     const char* scan_dir = argv[1];
-    const char* output_atlas_file_name = "";
-    const char* output_csv_filer_name = "";
 
-#if 0
-    DIR* dir = opendir(dir_name);
-    if (!dir) {
-        printf("[ERROR] Failed to open directory.");
-        return -1;
+    int output_file_basic_len = strlen(argv[2]);
+
+    int png_ext_len = strlen(PNG_EXTENSION);
+    char* output_atlas_file_name = (char*)malloc(png_ext_len + output_file_basic_len + 1);
+    strcpy(output_atlas_file_name, argv[2]);
+    strcat(output_atlas_file_name, PNG_EXTENSION);
+
+    int csv_ext_len = strlen(CSV_EXTENSION);
+    char* output_csv_file_name = (char*)malloc(csv_ext_len + output_file_basic_len + 1);
+    strcpy(output_csv_file_name, argv[2]);
+    strcat(output_csv_file_name, CSV_EXTENSION);
+
+    printf(" -- Scan directory: %s\n", scan_dir);
+    printf(" -- Create an texture atlas named: %s\n", output_atlas_file_name);
+    printf(" -- Create an texture atlas csv file named: %s\n", output_csv_file_name);
+
+    char ans;
+    printf("[Y/N]: ");
+    scanf("%c", &ans);
+    if (toupper(ans) == 'N') {
+        printf("[INFO] Stop create texture atlas...\n");
+        return 0;
     }
-#endif
 
     // 1. Read elements in this directory
     // ------------------------
     struct dirent **namelist;
     int elements_count;
 
+    printf("[INFO] Star scanning the directory.\n");
     elements_count = scandir(scan_dir, &namelist, FileFilter, alphasort);
 
     if (elements_count < 0) {
@@ -72,6 +84,7 @@ int main(int argc, char** argv) {
         Image* images = (Image*)malloc(elements_count * sizeof(Image));
         
         for (int i = 0; i < elements_count; i++) {
+            printf("[INFO] GET: %s...\n", namelist[i]->d_name);
             char* name = (char*)malloc(strlen(scan_dir) + strlen(namelist[i]->d_name) + 2);
             strcpy(name, scan_dir);
             strcat(name, "/");
@@ -142,14 +155,16 @@ int main(int argc, char** argv) {
             }
         }
 
-        if (0 == stbi_write_png(output_atlas_file_name, image_sz, image_sz, PNG_CHANNELS, atlas_data, image_sz * PNG_CHANNELS)) {
+        if (0 != stbi_write_png(output_atlas_file_name, image_sz, image_sz, PNG_CHANNELS, atlas_data, image_sz * PNG_CHANNELS)) {
             printf("[ERROR] Failed to create the texture atlas.\n");
             return -1;
+        } else {
+            printf("[INFO] Success to create atlas => %s\n", output_atlas_file_name);
         }
 
         // 5. Write the file
         // ------------------------
-        FILE* atlas_csv_file = fopen(output_csv_filer_name, "w");
+        FILE* atlas_csv_file = fopen(output_csv_file_name, "w");
         if (atlas_csv_file == NULL) {
             perror("[ERROR] Failed to create file");
             fclose(atlas_csv_file);
@@ -158,8 +173,9 @@ int main(int argc, char** argv) {
 
         fprintf(atlas_csv_file, "# Format: name,x,y,width,height\n");
         for (int i = 0; i < elements_count; i++) {
-            fprintf(atlas_csv_file, "r %s,%d,%d,%d,%d\n", images[i].name, images[i].x, images[i].y, images[i].w, images[i].h);
+            fprintf(atlas_csv_file, "%s,%d,%d,%d,%d\n", images[i].name, images[i].x, images[i].y, images[i].w, images[i].h);
         }
+        printf("[INFO] Success to create csv file => %s\n", output_csv_file_name);
 
 
         fclose(atlas_csv_file);
@@ -169,7 +185,10 @@ int main(int argc, char** argv) {
         free(context);
 
         free(images);
-    }   
+        
+        printf("[INFO] Done...");
+        getchar();
+    }
 
 #if 0   
 
