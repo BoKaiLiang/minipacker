@@ -1,5 +1,9 @@
 #define _CRT_SECURE_NO_WARNINGS
 
+// TODO
+// - create dir for ouput
+// - 
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +19,9 @@
 #define STB_RECT_PACK_IMPLEMENTATION
 #include "stb_rect_pack.h"
 
+#define PADDING 4           // padding between two sprite
+#define PNG_CHANNELS 4      // png channels
+
 static int IsFileExtension(const char* filename, const char* ext);
 static const char* GetFileExt(const char* filename);
 static int FileFilter(const struct dirent* ent);
@@ -29,13 +36,18 @@ typedef struct {
 
 int main(int argc, char** argv) {
 
-#if 0
-    if (argc < 2) {
+    if (argc < 4) {
         printf("[ERROR] No input.");
         return -1;
     }
-#endif
-    const char* dir_name = "D:/assets/textures/kenney_animalpackredux/PNG/Square";
+
+    for (int i = 0; i < argc; i++) {
+        printf("%s\n", argv[i]);
+    }
+
+    const char* scan_dir = argv[1];
+    const char* output_atlas_file_name = "";
+    const char* output_csv_filer_name = "";
 
 #if 0
     DIR* dir = opendir(dir_name);
@@ -45,19 +57,23 @@ int main(int argc, char** argv) {
     }
 #endif
 
-#if 1
+    // 1. Read elements in this directory
+    // ------------------------
     struct dirent **namelist;
-    int n;
+    int elements_count;
 
-    n = scandir(dir_name, &namelist, FileFilter, alphasort);
-    if (n < 0)
-       perror("scandir");
+    elements_count = scandir(scan_dir, &namelist, FileFilter, alphasort);
+
+    if (elements_count < 0) {
+       printf("[ERROR] Failed to scan the directory => %s", scan_dir);
+       return -1;
+    }
     else {
-        Image* images = (Image*)malloc(n * sizeof(Image));
+        Image* images = (Image*)malloc(elements_count * sizeof(Image));
         
-        for (int i = 0; i < n; i++) {
-            char* name = (char*)malloc(strlen(dir_name) + strlen(namelist[i]->d_name) + 2);
-            strcpy(name, dir_name);
+        for (int i = 0; i < elements_count; i++) {
+            char* name = (char*)malloc(strlen(scan_dir) + strlen(namelist[i]->d_name) + 2);
+            strcpy(name, scan_dir);
             strcat(name, "/");
             strcat(name, namelist[i]->d_name);
             
@@ -65,7 +81,7 @@ int main(int argc, char** argv) {
 
             images[i].data = stbi_load(name, &images[i].w, &images[i].h, &images[i].fmt, 0);
             if (images[i].data == NULL) {
-                printf("[ERROR] failed to get data from %s\n", name);
+                printf("[ERROR] Failed to get data from image => %s\n", name);
                 continue;
             }
             images[i].name = strdup(namelist[i]->d_name);
@@ -74,104 +90,91 @@ int main(int argc, char** argv) {
         }
         free(namelist);
 
+        // 2. Pack the image to larger image, bin packing using `stb_rect_pack`
+        // ------------------------
         stbrp_context* context = (stbrp_context*)malloc(sizeof(stbrp_context));
-        stbrp_node* nodes = (stbrp_node*)malloc(n * sizeof(stbrp_node));
+        stbrp_node* nodes = (stbrp_node*)malloc(elements_count * sizeof(stbrp_node));
 
-        stbrp_init_target(context, 1024, 1024, nodes, n);
-        stbrp_rect* rects = (stbrp_rect*)malloc(n * sizeof(stbrp_rect));
+        stbrp_init_target(context, 1024, 1024, nodes, elements_count);
+        stbrp_rect* rects = (stbrp_rect*)malloc(elements_count * sizeof(stbrp_rect));
 
-        int padding = 2;
-
-        for (int i = 0; i < n; i++) {
+        for (int i = 0; i < elements_count; i++) {
             rects[i].id = i;
-            rects[i].w = images[i].w + 2 * padding;
-            rects[i].h = images[i].h + 2 * padding;
+            rects[i].w = images[i].w + PADDING;
+            rects[i].h = images[i].h + PADDING;
         }
 
-        stbrp_pack_rects(context, rects, n);
-        for (int i = 0; i < n; i++) {
+        stbrp_pack_rects(context, rects, elements_count);
+        for (int i = 0; i < elements_count; i++) {
             images[i].x = rects[i].x;
             images[i].y = rects[i].y;
         }
 
+        // 3. Calculate the atlas image size that can fit all sprite
+        // ------------------------
         float rq_area = 0.0f;
-        for (int i = 0; i < n; i++) {
+        for (int i = 0; i < elements_count; i++) {
             rq_area += images[i].w * images[i].h;
         }
 
         float measured_sz = sqrtf(rq_area);
         int image_sz = (int)powf(2.0f, ceilf(log2f(measured_sz)));
-
-        printf("Atlas w and h: %d\n", image_sz);
-
-        unsigned char* atlas_data = (unsigned char*)calloc(image_sz * image_sz * 4, sizeof(unsigned char));
-        memset(atlas_data, 0, image_sz * image_sz * 4);
         
-        for (int i = 0; i < n; i++) {
-
-            // printf("name: %s. rect: %i >> x: %i, y: %i, w: %i, h: %i\n", images[i].name, rects[i].id, rects[i].x, rects[i].y, rects[i].w, rects[i].h);
-
+        // 4. Draw the texture atlas
+        // ------------------------
+        unsigned char* atlas_data = (unsigned char*)calloc(image_sz * image_sz * 4, sizeof(unsigned char));
+        memset(atlas_data, 0, image_sz * image_sz * PNG_CHANNELS);
+        
+        for (int i = 0; i < elements_count; i++) {
             if (rects[i].was_packed) {
                 for (int y = 0; y < images[i].h; y++) {
                     for (int x = 0; x < images[i].w; x++) {
                         
-                        int atlas_idx = 4 * ((y + rects[i].y) * image_sz +  (x + rects[i].x));
-                        int image_idx = 4 * (y * images[i].w + x);
+                        int atlas_idx = PNG_CHANNELS * ((y + rects[i].y) * image_sz +  (x + rects[i].x));
+                        int image_idx = PNG_CHANNELS * (y * images[i].w + x);
 
-                        atlas_data[atlas_idx] = images[i].data[image_idx];
-                        atlas_data[atlas_idx + 1] = images[i].data[image_idx + 1];
-                        atlas_data[atlas_idx + 2] = images[i].data[image_idx + 2];
-                        atlas_data[atlas_idx + 3] = images[i].data[image_idx + 3];
+                        atlas_data[atlas_idx] = images[i].data[image_idx];          // R
+                        atlas_data[atlas_idx + 1] = images[i].data[image_idx + 1];  // G
+                        atlas_data[atlas_idx + 2] = images[i].data[image_idx + 2];  // B
+                        atlas_data[atlas_idx + 3] = images[i].data[image_idx + 3];  // A
                     }   
                 }
             }
         }
-        
-#endif
 
-        // 在 (10, 10)為原點的地方畫出 128 * 128的正方形
-/*
-        for (int y = 0; y < 128; y += 1) {
-            for (int x = 0; x < 128; x += 1) {
-
-                int index = 4 * ((y + 128) * 1024 + (x + 128));
-
-                atlas_data[index] = 127; 
-                atlas_data[index + 1] = 0; 
-                atlas_data[index + 2] = 255; 
-                atlas_data[index + 3] = 255; 
-            }
-        }
-*/
-#if 0      
-        stbi_write_png("cute.png", image_sz, image_sz, 4, atlas_data, image_sz * 4);
-
-        FILE* csv = fopen("cute.txt", "w");
-        if (csv == NULL) {
-            perror("Failed to create file");
-            fclose(csv);
+        if (0 == stbi_write_png(output_atlas_file_name, image_sz, image_sz, PNG_CHANNELS, atlas_data, image_sz * PNG_CHANNELS)) {
+            printf("[ERROR] Failed to create the texture atlas.\n");
             return -1;
         }
 
-        fprintf(csv, "name,x,y,width,height\n");
-        for (int i = 0; i < n; i++) {
-            fprintf(csv, "%s,%d,%d,%d,%d\n", images[i].name, images[i].x, images[i].y, images[i].w, images[i].h);
+        // 5. Write the file
+        // ------------------------
+        FILE* atlas_csv_file = fopen(output_csv_filer_name, "w");
+        if (atlas_csv_file == NULL) {
+            perror("[ERROR] Failed to create file");
+            fclose(atlas_csv_file);
+            return -1;
         }
 
-        /* Read file string in format: https://stackoverflow.com/questions/4689747/how-to-read-specifically-formatted-data-from-a-file/4689881 */
+        fprintf(atlas_csv_file, "# Format: name,x,y,width,height\n");
+        for (int i = 0; i < elements_count; i++) {
+            fprintf(atlas_csv_file, "r %s,%d,%d,%d,%d\n", images[i].name, images[i].x, images[i].y, images[i].w, images[i].h);
+        }
 
-        fclose(csv);
-#endif
+
+        fclose(atlas_csv_file);
 
         free(rects);
         free(nodes);
         free(context);
 
         free(images);
-
     }   
 
 #if 0   
+
+        /* Read file string in format: https://stackoverflow.com/questions/4689747/how-to-read-specifically-formatted-data-from-a-file/4689881 */
+
         // Serialize file here
 
         // test reading file
