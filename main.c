@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
     struct dirent **namelist;
     int elements_count;
 
-    printf("[INFO] Star scanning the directory.\n");
+    printf("[INFO] Start scanning the directory.\n");
     elements_count = scandir(scan_dir, &namelist, FileFilter, alphasort);
 
     if (elements_count < 0) {
@@ -103,12 +103,23 @@ int main(int argc, char** argv) {
         }
         free(namelist);
 
-        // 2. Pack the image to larger image, bin packing using `stb_rect_pack`
+        // 3. Calculate the atlas image size that can fit all sprite
+        // ------------------------
+        float rq_area = 0.0f;
+        for (int i = 0; i < elements_count; i++) {
+            rq_area += images[i].w * images[i].h;
+        }
+
+        float measured_sz = sqrtf(rq_area);
+        int image_sz = (int)powf(2.0f, ceilf(log2f(measured_sz)));
+        printf("[INFO] Atlas size: %d * %d\n", image_sz, image_sz);
+
+        // 3. Pack the image to larger image, bin packing using `stb_rect_pack`
         // ------------------------
         stbrp_context* context = (stbrp_context*)malloc(sizeof(stbrp_context));
         stbrp_node* nodes = (stbrp_node*)malloc(elements_count * sizeof(stbrp_node));
 
-        stbrp_init_target(context, 1024, 1024, nodes, elements_count);
+        stbrp_init_target(context, image_sz, image_sz, nodes, elements_count);
         stbrp_rect* rects = (stbrp_rect*)malloc(elements_count * sizeof(stbrp_rect));
 
         for (int i = 0; i < elements_count; i++) {
@@ -123,16 +134,6 @@ int main(int argc, char** argv) {
             images[i].y = rects[i].y;
         }
 
-        // 3. Calculate the atlas image size that can fit all sprite
-        // ------------------------
-        float rq_area = 0.0f;
-        for (int i = 0; i < elements_count; i++) {
-            rq_area += images[i].w * images[i].h;
-        }
-
-        float measured_sz = sqrtf(rq_area);
-        int image_sz = (int)powf(2.0f, ceilf(log2f(measured_sz)));
-        
         // 4. Draw the texture atlas
         // ------------------------
         unsigned char* atlas_data = (unsigned char*)calloc(image_sz * image_sz * 4, sizeof(unsigned char));
