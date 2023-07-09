@@ -15,7 +15,7 @@
 #define STB_RECT_PACK_IMPLEMENTATION
 #include "stb_rect_pack.h"
 
-#define PADDING 4      // padding between two sprite
+#define PADDING 0      // padding between two sprite
 #define PNG_CHANNELS 4 // png channels
 
 static const char *PNG_EXTENSION = ".png";
